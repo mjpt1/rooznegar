@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>روزنگار — بازگرداندن تاریخ‌ها</title><meta name="robots" content="noindex">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;800&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root{--a:#7c5cff;--bg:#f6f4ff;--card:#fff;--t:#1d1b2e;--m:#5f5c74;--l:#e7e5f2}
+  @media (prefers-color-scheme:dark){:root{--bg:#0f0e17;--card:#1d1c2b;--t:#eeecf8;--m:#a6a3bf;--l:#2b2940}}
+  body{margin:0;font-family:Vazirmatn,system-ui,sans-serif;background:var(--bg);color:var(--t);line-height:1.8}
+  .w{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+  .c{background:var(--card);border:1px solid var(--l);border-radius:16px;padding:16px;margin-bottom:12px}
+  h1{font-size:22px;margin:0 0 6px} .m{color:var(--m);font-size:14px}
+  button{font:inherit;border:0;border-radius:12px;padding:10px 16px;cursor:pointer;background:var(--a);color:#fff;font-weight:700;min-height:44px}
+  button.g{background:color-mix(in srgb,var(--a) 14%,transparent);color:var(--t)} button:disabled{opacity:.5}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse;font-size:14px} td,th{padding:8px 6px;border-bottom:1px solid var(--l);text-align:start;vertical-align:top}
+  .ok{color:#15803d} .bad{color:#b91c1c} input[type=checkbox]{width:20px;height:20px}
+</style></head>
+<body><div class="w">
+<div class="c"><h1>بازگرداندن تاریخ کارها</h1>
+  <p class="m">این صفحه کارهایی را که به‌اشتباه به امروز منتقل شدند، از روی نسخه‌ی قبلیِ ذخیره‌شده روی <b>همین دستگاه/مرورگر</b> پیدا می‌کند و در Google Calendar به روز اصلی‌شان برمی‌گرداند. این صفحه برنامه‌ی روزنگار را اجرا نمی‌کند و چیزی را بدون تأیید شما تغییر نمی‌دهد.</p></div>
+
+<div class="c" id="s1"><b>۱. نسخه‌ی قبلی روی این دستگاه</b><div id="snapInfo" class="m">در حال بررسی…</div>
+  <div class="row" style="margin-top:8px"><label class="g" style="padding:8px 12px;border-radius:12px;cursor:pointer;background:color-mix(in srgb,var(--a) 14%,transparent)">یا انتخاب فایل پشتیبان JSON<input type="file" id="file" accept=".json" hidden></label></div></div>
+
+<div class="c"><b>۲. ورود به حساب Google همان کسی که تاریخ‌هایش جابه‌جا شده</b>
+  <div class="row" style="margin-top:8px"><button id="login">ورود با Google</button><span id="who" class="m"></span></div></div>
+
+<div class="c"><b>۳. کارهای جابه‌جاشده</b> <span id="scanInfo" class="m"></span>
+  <div class="row" style="margin:8px 0"><button id="scan" class="g" disabled>جستجو</button><button id="fix" disabled>برگرداندن موارد انتخاب‌شده</button></div>
+  <div id="list"></div></div>
+</div>
+<script>
+'use strict';
+const CLIENT_ID = '696930482825-uc571dlfmps2dvupc1v5a8t5g6gmh8oa.apps.googleusercontent.com';
+const $ = s => document.querySelector(s), esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fa = s => new Intl.DateTimeFormat('fa-IR-u-ca-persian', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(s + 'T12:00:00'));
+let snap = new Map(), token = null, found = [];
+
+/* ---- 1. the old copy: saved snapshot key, the app's own storage, or an uploaded backup ---- */
+function addTasks(tasks, src) {
+  let n = 0;
+  for (const t of tasks || []) if (t && t.gid && t.date && !(t.rec && (t.rec === true || t.rec.freq))) {
+    const k = (t.cal || 'primary') + '|' + t.gid;
+    if (!snap.has(k)) { snap.set(k, { cal: t.cal || 'primary', gid: t.gid, date: t.date, time: t.time || '', duration: t.duration || 30, title: t.title || '', src }); n++; }
+  }
+  return n;
+}
+function loadLocal() {
+  let info = [];
+  try { const a = JSON.parse(localStorage.getItem('rz-restore-snapshot') || '[]'); const n = addTasks(a, 'snapshot'); if (n) info.push(n + ' مورد از نسخه‌ی ذخیره‌شده'); } catch { }
+  try { const s = JSON.parse(localStorage.getItem('rz-restore-full') || '{}'); const n = addTasks(s.tasks, 'full'); if (n) info.push(n + ' مورد از کپی کامل'); } catch { }
+  try { const s = JSON.parse(localStorage.getItem('rooznegar') || '{}'); const n = addTasks(s.tasks, 'app'); if (n) info.push(n + ' مورد از داده‌ی برنامه روی این دستگاه'); } catch { }
+  $('#snapInfo').innerHTML = snap.size ? '<span class="ok">✓ پیدا شد: ' + info.join('، ') + '</span>' : '<span class="bad">روی این دستگاه نسخه‌ای پیدا نشد.</span> اگر روی دستگاه یا مرورگر دیگری روزنگار را باز کرده بودید، همین صفحه را آن‌جا باز کنید.';
+  $('#scan').disabled = !(snap.size && token);
+}
+$('#file').onchange = async e => { try { const d = JSON.parse(await e.target.files[0].text()); addTasks(d.tasks || d, 'file'); loadLocal(); } catch { alert('فایل نامعتبر'); } };
+loadLocal();
+
+/* ---- 2. Google sign-in (popup from the click) ---- */
+$('#login').onclick = () => {
+  google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: 'https://www.googleapis.com/auth/calendar.events', callback: r => {
+    if (!r.access_token) return alert('ورود انجام نشد');
+    token = r.access_token; $('#who').textContent = '✓ وارد شدید'; $('#scan').disabled = !snap.size;
+  } }).requestAccessToken({ prompt: 'select_account' });
+};
+async function g(path, opt = {}) {
+  const r = await fetch('https://www.googleapis.com/calendar/v3' + path, { ...opt, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' } });
+  if (!r.ok) throw new Error(r.status + ' ' + (await r.text()).slice(0, 200));
+  return r.status === 204 ? null : r.json();
+}
+
+/* ---- 3. find events whose date now differs from the old copy (moved to "today" recently) ---- */
+$('#scan').onclick = async () => {
+  $('#scan').disabled = true; $('#scanInfo').textContent = 'در حال جستجو…'; found = [];
+  const cals = [...new Set([...snap.values()].map(x => x.cal))];
+  const since = new Date(Date.now() - 5 * 864e5).toISOString();
+  for (const cal of cals) {
+    let page = null;
+    do {
+      const p = new URLSearchParams({ updatedMin: since, showDeleted: 'false', maxResults: '250', singleEvents: 'false' }); if (page) p.set('pageToken', page);
+      let res; try { res = await g('/calendars/' + encodeURIComponent(cal) + '/events?' + p); } catch (e) { console.warn(cal, e.message); break; }
+      for (const ev of res.items || []) {
+        if (ev.recurrence || ev.recurringEventId || ev.status === 'cancelled') continue;
+        const old = snap.get(cal + '|' + ev.id); if (!old) continue;
+        const curDate = ev.start?.date || (ev.start?.dateTime ? ymd(new Date(ev.start.dateTime)) : null);
+        if (!curDate || curDate === old.date) continue;
+        if (!(old.date < curDate)) continue;                     // only things pushed forward
+        found.push({ cal, ev, old, curDate });
+      }
+      page = res.nextPageToken;
+    } while (page);
+  }
+  found.sort((a, b) => a.old.date.localeCompare(b.old.date));
+  $('#scanInfo').textContent = found.length + ' مورد پیدا شد';
+  $('#list').innerHTML = found.length ? `<table><tr><th></th><th>کار</th><th>الان</th><th>تاریخ اصلی</th></tr>${found.map((f, i) => `<tr><td><input type="checkbox" data-i="${i}" checked></td><td>${esc(f.ev.summary)}</td><td>${fa(f.curDate)}</td><td><b>${fa(f.old.date)}</b>${f.old.time ? ' ' + f.old.time : ''}</td></tr>`).join('')}</table>` : '<p class="m">موردی پیدا نشد.</p>';
+  $('#fix').disabled = !found.length; $('#scan').disabled = false;
+};
+
+/* ---- 4. put them back (same time & duration on the original day) ---- */
+$('#fix').onclick = async () => {
+  const pick = [...document.querySelectorAll('[data-i]:checked')].map(c => found[+c.dataset.i]);
+  if (!pick.length || !confirm(pick.length + ' کار به تاریخ اصلی برگردانده شود؟')) return;
+  $('#fix').disabled = true; let ok = 0, bad = 0;
+  for (const f of pick) {
+    const ev = f.ev, o = f.old, body = {};
+    if (ev.start.date) {                                         // all-day: keep its length
+      const len = Math.max(1, Math.round((new Date(ev.end.date) - new Date(ev.start.date)) / 864e5));
+      const e = new Date(o.date + 'T00:00:00'); e.setDate(e.getDate() + len);
+      body.start = { date: o.date }; body.end = { date: ymd(e) };
+    } else {                                                     // timed: same clock time & duration as before
+      const s0 = new Date(ev.start.dateTime), e0 = new Date(ev.end.dateTime), dur = e0 - s0;
+      const hm = o.time || `${String(s0.getHours()).padStart(2, '0')}:${String(s0.getMinutes()).padStart(2, '0')}`;
+      const s = new Date(o.date + 'T' + hm + ':00');
+      body.start = { dateTime: s.toISOString(), timeZone: ev.start.timeZone || TZ }; body.end = { dateTime: new Date(s.getTime() + dur).toISOString(), timeZone: ev.end.timeZone || TZ };
+    }
+    try { await g('/calendars/' + encodeURIComponent(f.cal) + '/events/' + ev.id, { method: 'PATCH', body: JSON.stringify(body) }); ok++; }
+    catch (e) { bad++; console.warn(e); }
+    $('#scanInfo').textContent = `برگردانده شد: ${ok}` + (bad ? ` — خطا: ${bad}` : '');
+  }
+  alert(`تمام شد. ${ok} مورد برگشت${bad ? '، ' + bad + ' مورد خطا داشت' : ''}.`);
+};
+</script></body></html>

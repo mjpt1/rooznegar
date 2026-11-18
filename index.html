@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<script>/* Android: let the system keep the status bar outside the page (only iPhone needs to draw under it) */if(!/iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent))document.querySelector('meta[name=viewport]').content='width=device-width,initial-scale=1,maximum-scale=1';</script>
+<title>روزنگار</title>
+<meta name="theme-color" content="#7c5cff">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="روزنگار">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=28">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><img class="logo" src="icon.svg" alt=""> روزنگار</div>
+    <nav id="views">
+      <button data-view="today" class="active">☀️ امروز</button>
+      <button data-view="upcoming">📅 پیش‌رو</button>
+      <button data-view="week">🧭 هفته</button>
+      <button data-view="month">🗓️ تقویم ماهانه</button>
+      <button data-view="stats">📊 آمار</button>
+      <button data-view="all">📋 همه کارها</button>
+      <button data-view="done">✅ انجام‌شده</button>
+    </nav>
+    <div class="side-title">دسته‌ها <button class="icon" id="addCat" title="دسته جدید" aria-label="دسته جدید">＋</button></div>
+    <div id="catList"></div>
+    <div class="side-bottom">
+      <div id="syncState" class="sync off">● گوگل متصل نیست</div>
+      <button id="openSettings">⚙️ تنظیمات</button>
+      <div class="legal"><a href="about.html">درباره</a> · <a href="privacy.html">حریم خصوصی</a> · <a href="terms.html">شرایط</a></div>
+    </div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <button class="icon menu" id="menuBtn" aria-label="منو">☰</button>
+      <div>
+        <h1 id="viewTitle">امروز</h1>
+        <div id="viewSub" class="muted"></div>
+      </div>
+      <div class="searchbox"><input id="search" type="search" placeholder="جستجو…" enterkeyhint="search"><button type="button" id="searchX" aria-label="clear">✕</button></div>
+      <button class="icon topset" id="topSettings" aria-label="settings">⚙️</button>
+    </header>
+    <form id="quickAdd" class="quick">
+      <input id="quickTitle" placeholder="مثلاً: فردا ساعت ۵ عصر جلسه تیم هر دوشنبه #کار !" autocomplete="off">
+      <button type="button" id="openFull" class="ghost">جزئیات</button>
+      <button class="primary">افزودن</button>
+    </form>
+    <section id="content"></section>
+  </main>
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+<button class="fab" id="fab" aria-label="کار جدید">＋</button>
+
+<!-- Task editor -->
+<dialog id="taskDlg">
+  <form method="dialog" id="taskForm">
+    <h2 id="taskDlgTitle">کار جدید</h2>
+    <label>عنوان<input name="title" required></label>
+    <label>یادداشت<textarea name="notes" rows="2"></textarea></label>
+    <div class="row">
+      <label>تاریخ<input type="date" name="date"><small class="jhint" data-for="date"></small></label>
+      <label>ساعت شروع<input type="time" name="time"><span class="allday"><input type="checkbox" id="allDay"> تمام روز</span></label>
+      <label>مدت (دقیقه)<input type="number" name="duration" min="0" value="30"></label>
+    </div>
+    <div class="row">
+      <label>تقویم<select name="cat"></select></label>
+      <label>اولویت<select name="prio"><option value="0">عادی</option><option value="1">مهم</option><option value="2">فوری</option></select></label>
+      <label>رنگ اختصاصی<input type="color" name="color"></label>
+    </div>
+    <label>برچسب‌ها (با کاما جدا کنید)<input name="tags" placeholder="خرید, فوری, پروژه‌الف"></label>
+    <label>لینک / پیوست<input name="link" dir="ltr" placeholder="https://…"></label>
+    <fieldset>
+      <legend>زیرکارها <span id="subProg" class="muted"></span></legend>
+      <div id="subList" class="subs"></div>
+      <div class="row"><input id="subNew" placeholder="زیرکار جدید و Enter"><button type="button" id="subAdd" class="ghost">＋</button></div>
+    </fieldset>
+    <fieldset>
+      <legend>تکرار</legend>
+      <div class="row">
+        <label>نوع<select name="freq">
+          <option value="">بدون تکرار</option><option value="DAILY">روزانه</option>
+          <option value="WEEKLY">هفتگی</option><option value="MONTHLY">ماهانه</option><option value="YEARLY">سالانه</option></select></label>
+        <label>هر چند<input type="number" name="interval" min="1" value="1"></label>
+        <label>تا تاریخ<input type="date" name="until"><small class="jhint" data-for="until"></small></label>
+      </div>
+      <div class="days" id="daysPick"></div>
+    </fieldset>
+    <fieldset>
+      <legend>یادآوری‌ها</legend>
+      <div id="remList" class="chips"></div>
+      <div class="row">
+        <select id="remAdd">
+          <option value="0">سر وقت</option><option value="5">۵ دقیقه قبل</option><option value="10">۱۰ دقیقه قبل</option>
+          <option value="15">۱۵ دقیقه قبل</option><option value="30">۳۰ دقیقه قبل</option><option value="60">۱ ساعت قبل</option>
+          <option value="120">۲ ساعت قبل</option><option value="1440">۱ روز قبل</option>
+        </select>
+        <button type="button" id="remAddBtn" class="ghost">＋ افزودن یادآوری</button>
+      </div>
+      <div class="row">
+        <label>زنگ<select name="sound"></select></label>
+        <button type="button" id="testSound" class="ghost">▶ پخش</button>
+      </div>
+    </fieldset>
+    <div class="actions">
+      <button type="button" id="delTask" class="danger">حذف</button>
+      <button type="button" id="focusBtn" class="ghost">🍅 تمرکز</button>
+      <span class="grow"></span>
+      <button value="cancel" formnovalidate class="ghost">انصراف</button>
+      <button value="ok" class="primary">ذخیره</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Category editor -->
+<dialog id="catDlg">
+  <form method="dialog" id="catForm">
+    <h2>دسته</h2>
+    <label>نام<input name="name" required></label>
+    <label>رنگ</label>
+    <div id="swatches" class="swatches"></div>
+    <label>زنگ پیش‌فرض این دسته<select name="sound"></select></label>
+    <div class="actions">
+      <button type="button" id="delCat" class="danger">حذف</button><span class="grow"></span>
+      <button value="cancel" formnovalidate class="ghost">انصراف</button>
+      <button value="ok" class="primary">ذخیره</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Settings -->
+<dialog id="setDlg">
+  <form method="dialog" id="setForm">
+    <h2>تنظیمات</h2>
+    <fieldset><legend>ظاهر</legend>
+      <div class="row">
+        <label>تم<select name="theme"><option value="auto">خودکار</option><option value="dark">تیره</option><option value="light">روشن</option></select></label>
+        <label>رنگ اصلی<input type="color" name="accent"></label>
+        <label>گردی گوشه‌ها<input type="range" name="radius" min="4" max="28"></label>
+      </div>
+      <div class="row">
+        <label>تقویم نمایش<select name="calendar"><option value="persian">شمسی</option><option value="gregory">میلادی</option></select></label>
+        <label>شروع هفته<select name="weekStart"><option value="6">شنبه</option><option value="0">یکشنبه</option><option value="1">دوشنبه</option></select></label>
+        <label>زبان<select name="lang"><option value="fa">فارسی</option><option value="en">English</option></select></label>
+      </div>
+    </fieldset>
+    <fieldset><legend>گوگل کلندر</legend>
+      <label>Google OAuth Client ID<input name="clientId" dir="ltr" placeholder="xxxx.apps.googleusercontent.com"></label>
+      <label>Calendar ID<input name="calendarId" dir="ltr" placeholder="primary"></label>
+      <label>فاصله همگام‌سازی (ثانیه)<input type="number" name="syncEvery" min="10"></label>
+      <div class="row">
+        <button type="button" id="gConnect" class="primary">اتصال به گوگل</button>
+        <button type="button" id="gSyncNow" class="ghost">همگام‌سازی الان</button>
+        <button type="button" id="gDisconnect" class="ghost">قطع اتصال</button>
+      </div>
+    </fieldset>
+    <fieldset><legend>اعلان و صدا</legend>
+      <div class="row">
+        <label>زنگ پیش‌فرض<select name="sound"></select></label>
+        <label>صدا<input type="range" name="volume" min="0" max="1" step="0.05"></label>
+      </div>
+      <label class="check"><input type="checkbox" name="vibrate"> لرزش</label>
+      <div class="row">
+        <label class="ghost filebtn">🎵 آپلود زنگ دلخواه (mp3/wav، حداکثر ۷۰۰KB)<input type="file" id="soundFile" accept="audio/*" hidden></label>
+        <label>مدت تمرکز (دقیقه)<input type="number" name="focusMin" min="5" max="120"></label>
+        <label>Snooze (دقیقه)<input type="number" name="snoozeMin" min="1" max="120"></label>
+      </div>
+      <label class="check"><input type="checkbox" name="holidays"> نمایش تعطیلات رسمی ایران</label>
+      <div class="row">
+        <button type="button" id="askNotif" class="ghost">اجازه اعلان</button>
+        <button type="button" id="testNotif" class="ghost">اعلان آزمایشی</button>
+      </div>
+      <div class="pushbox">
+        <button type="button" id="pushBtn" class="primary">🔔 فعال‌سازی یادآوری در پس‌زمینه</button>
+        <small id="pushState" class="muted">با این گزینه یادآوری‌ها حتی وقتی برنامه بسته است روی گوشی، تبلت و Apple Watch می‌آیند.</small>
+      </div>
+    </fieldset>
+    <fieldset><legend>داده</legend>
+      <div class="row">
+        <button type="button" id="exportBtn" class="ghost">خروجی JSON</button>
+        <label class="ghost filebtn">ورودی JSON<input type="file" id="importFile" accept=".json" hidden></label>
+      </div>
+    </fieldset>
+    <div class="actions"><span class="grow"></span>
+      <button value="cancel" formnovalidate class="ghost">بستن</button>
+      <button value="ok" class="primary">ذخیره</button></div>
+  </form>
+</dialog>
+
+<div id="focus" hidden>
+  <div class="focus-box">
+    <div id="focusTitle"></div>
+    <div id="focusTime">25:00</div>
+    <div class="row" style="justify-content:center">
+      <button type="button" id="focusPause" class="ghost">⏸ توقف</button>
+      <button type="button" id="focusStop" class="danger">✕ پایان</button>
+    </div>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="app.js?v=28"></script>
+<script src="features.js?v=28"></script>
+<script src="v2.js?v=28"></script>
+<script src="v3.js?v=28"></script>
+<script src="v4.js?v=28"></script>
+<script src="v5.js?v=28"></script>
+<script src="v6.js?v=28"></script>
+<script src="v7.js?v=28"></script>
+<script src="v8.js?v=28"></script>
+<script src="v9.js?v=28"></script>
+<script src="v10.js?v=28"></script>
+<script src="v11.js?v=28"></script>
+<script src="v12.js?v=28"></script>
+<script src="v13.js?v=28"></script>
+<script src="i18n.js?v=28"></script>
+</body>
+</html>

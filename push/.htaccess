@@ -1,0 +1,10 @@
+<Files "lib.php">
+  Require all denied
+</Files>
+<Files "cron.php">
+  Require all denied
+</Files>
+# nothing but the endpoints themselves should ever be served from here
+<FilesMatch "\.(json|tmp|lock|n|pem|key|log|ini|bak|swp)$">
+  Require all denied
+</FilesMatch>
